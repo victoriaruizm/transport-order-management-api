@@ -1,0 +1,37 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      routes:
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/auth/**,/api/orders/**,/api/assignments/**
+        - id: driver-service
+          uri: ${DRIVER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/drivers/**
+        - id: order-service-docs
+          uri: ${ORDER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/docs/orders/**
+          filters:
+            - StripPrefix=2
+        - id: driver-service-docs
+          uri: ${DRIVER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/docs/drivers/**
+          filters:
+            - StripPrefix=2
+
+jwt:
+  secret: ${JWT_SECRET}
+
+logging:
+  structured:
+    format:
+      console: ecs

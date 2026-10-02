@@ -18,6 +18,7 @@
     <modules>
         <module>driver-service</module>
         <module>order-service</module>
+        <module>gateway</module>
     </modules>
 
     <properties>
