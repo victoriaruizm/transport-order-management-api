@@ -1,0 +1,75 @@
+x-secrets: &secrets
+  DB_PASSWORD: ${DB_PASSWORD:-DevOnly_SqlServer_2026!}
+  JWT_SECRET: ${JWT_SECRET:-DevOnly-JWT-Secret-32-Chars-2026!}
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD:-DevOnly_SqlServer_2026!}
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD:-DevOnly_SqlServer_2026!}
+    entrypoint: >
+      /bin/bash -c "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P $$MSSQL_SA_PASSWORD
+      -Q \"IF DB_ID('orders_db') IS NULL CREATE DATABASE orders_db; IF DB_ID('drivers_db') IS NULL CREATE DATABASE drivers_db;\""
+
+  driver-service:
+    build:
+      context: .
+      args:
+        MODULE: driver-service
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *secrets
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=drivers_db;encrypt=true;trustServerCertificate=true
+
+  order-service:
+    build:
+      context: .
+      args:
+        MODULE: order-service
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      driver-service:
+        condition: service_started
+    environment:
+      <<: *secrets
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=orders_db;encrypt=true;trustServerCertificate=true
+      DRIVER_SERVICE_URL: http://driver-service:8082
+      AUTH_USER: ${AUTH_USER:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-admin123}
+
+  gateway:
+    build:
+      context: .
+      args:
+        MODULE: gateway
+    depends_on:
+      - order-service
+      - driver-service
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-DevOnly-JWT-Secret-32-Chars-2026!}
+      ORDER_SERVICE_URL: http://order-service:8081
+      DRIVER_SERVICE_URL: http://driver-service:8082
+
+volumes:
+  sqlserver-data:
